@@ -17,10 +17,74 @@ import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.platform.PlatformView;
 
+import javassist.CannotCompileException;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtField;
+import javassist.CtMethod;
+import javassist.CtNewMethod;
+import javassist.NotFoundException;
+
 public class UnityView implements PlatformView{//}, MethodCallHandler {
     private static UnityPlayer unityPlayer;
+    private static boolean unityPlayerSetup = false;
     public static void setUnityPlayer(UnityPlayer player){
         unityPlayer = player;
+    }
+    static {
+        if (!unityPlayerSetup) { //this line may well be redundant
+
+            String activityPackage = BuildConfig.class.getPackage().toString(); // OR BuildConfig.APPLICATION_ID OR //getApplicationContext().getPackageName()
+            try {
+                ClassPool pool = ClassPool.getDefault();
+                CtClass mainActivity = ClassPool.getDefault().get(activityPackage + ".MainActivity");
+                CtField unityPlayerField = CtField.make("public UnityPlayer mUnityPlayer = new UnityPlayer(this);", mainActivity); //Initialisation may need to happen in onCreate
+
+                CtMethod onDestroy = CtNewMethod.make(
+                "protected void onDestroy() {\n" +
+                    "    mUnityPlayer.quit();\n" +
+                    "    super.onDestroy();\n" +
+                    "}", mainActivity);
+                mainActivity.addMethod(onDestroy);
+
+                CtMethod onPause = CtNewMethod.make(
+                "protected void onPause() {\n" +
+                    "    super.onPause();\n" +
+                    "    mUnityPlayer.pause();\n" +
+                    "}", mainActivity);
+                mainActivity.addMethod(onPause);
+
+                CtMethod onResume = CtNewMethod.make(
+                "protected void onResume() {\n" +
+                    "    super.onResume();\n" +
+                    "    mUnityPlayer.resume();\n" +
+                    "}", mainActivity);
+                mainActivity.addMethod(onResume);
+
+                CtMethod onFocusChange = CtNewMethod.make(
+                "public void onWindowFocusChanged(boolean hasFocus) {\n" +
+                    "    super.onWindowFocusChanged(hasFocus);\n" +
+                    "    mUnityPlayer.windowFocusChanged(hasFocus);\n" +
+                    "  }\n" +
+                    "}", mainActivity);
+                mainActivity.addMethod(onFocusChange);
+
+                CtMethod onConfigChange = CtNewMethod.make(
+                "public void onConfigurationChanged(Configuration newConfig) {\n" +
+                    "    super.onConfigurationChanged(newConfig);\n" +
+                    "    mUnityPlayer.configurationChanged(newConfig);\n" +
+                    "}", mainActivity);
+                mainActivity.addMethod(onConfigChange);
+
+                mainActivity.toClass(); //loads MainActivity into the VRM
+                mainActivity.detach(); //Not strictly necessary but it is tidy.
+            } catch (NotFoundException e) {
+                e.printStackTrace();
+            } catch (CannotCompileException e) {
+                e.printStackTrace();
+            }
+            unityPlayerSetup = true;
+        }
     }
 
     private final String CHANNEL = "unityview.com.unityview/unityview_";
